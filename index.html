@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ask the Data</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/alasql@4.6.5/dist/alasql.min.js"></script>
+<style>
+/* Layout: projector-first single column; question bar on top, each answer followed by the exact queries Claude ran and their results. */
+:root{
+  --ink:#2B2530; --head:#3B1B4A; --ink-2:#4E4652; --muted:#6E6572;
+  --bg:#F6F3F8; --paper:#FFFFFF; --line:#E2D8E8; --tint:#EFE6F3;
+  --accent:#813F96; --accent-soft:#F1E6F5; --gold:#B88A1F; --on-accent:#FFFFFF;
+  --code-bg:#3B1B4A; --code-fg:#F4EEF7; --code-accent:#E0B354;
+  --bar:#813F96; --bad:#B8481D;
+  --f-display:"Manrope","Segoe UI",Arial,sans-serif;
+  --f-body:"Inter","Segoe UI",Calibri,Arial,sans-serif;
+  --f-mono:"IBM Plex Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --ink:#EEE7F2; --head:#F6EEFA; --ink-2:#CDBFD6; --muted:#A897B2;
+  --bg:#1C0F24; --paper:#2A1736; --line:#432A52; --tint:#331D41;
+  --accent:#C78BD0; --accent-soft:#3E2350; --gold:#E0B354; --on-accent:#1C0F24;
+  --code-bg:#120819; --code-fg:#F4EEF7; --code-accent:#E0B354;
+  --bar:#C78BD0; --bad:#F08A5D; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --ink:#EEE7F2; --head:#F6EEFA; --ink-2:#CDBFD6; --muted:#A897B2;
+  --bg:#1C0F24; --paper:#2A1736; --line:#432A52; --tint:#331D41;
+  --accent:#C78BD0; --accent-soft:#3E2350; --gold:#E0B354; --on-accent:#1C0F24;
+  --code-bg:#120819; --code-fg:#F4EEF7; --code-accent:#E0B354;
+  --bar:#C78BD0; --bad:#F08A5D; color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:18px;line-height:1.55}
+.wrap{max-width:1080px;margin:0 auto;padding-block:24px 80px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:20px;grid-template-columns:minmax(0,1fr)}
+h1,h2,h3{font-family:var(--f-display);color:var(--head);margin:0;line-height:1.15;text-wrap:balance}
+h1{font-size:clamp(2rem,5vw,2.8rem);font-weight:800}
+p{margin:0}
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px}
+.top .sub{color:var(--ink-2);max-width:62ch}
+.status{font-family:var(--f-mono);font-size:.8rem;color:var(--muted);text-align:right}
+.status b{color:var(--accent);font-weight:500}
+.ask{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:12px}
+.ask form{display:flex;gap:10px;flex-wrap:wrap}
+.ask textarea{flex:1 1 420px;min-width:0;font:1.15rem var(--f-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;resize:vertical;min-height:3.2em}
+.btns{display:flex;gap:8px;flex-wrap:wrap;align-items:stretch}
+button{font:700 1rem var(--f-body);cursor:pointer;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:var(--on-accent);padding:10px 18px}
+button.ghost{background:transparent;color:var(--accent)}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,textarea:focus-visible,summary:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:600 .9rem var(--f-body);background:var(--accent-soft);color:var(--head);border:1px solid var(--line);border-radius:999px;padding:6px 12px}
+.opts{display:flex;flex-wrap:wrap;gap:16px;align-items:center;font-size:.9rem;color:var(--muted)}
+.opts label{display:flex;gap:6px;align-items:center}
+.thread{display:grid;gap:22px}
+.turn{display:grid;gap:12px}
+.q{font-family:var(--f-display);font-weight:700;font-size:1.3rem;color:var(--head)}
+.q::before{content:"Q  ";color:var(--accent)}
+.a{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:16px 18px;display:grid;gap:10px;min-width:0}
+.a .text{min-width:0}
+.a .text p+p,.a .text ul,.a .text ol,.a .text table{margin-top:.6em}
+.a .text ul,.a .text ol{padding-left:1.3em;margin-bottom:0}
+.a .text table{border-collapse:collapse;font-size:.95rem;font-variant-numeric:tabular-nums}
+.a .text th,.a .text td{border-bottom:1px solid var(--line);padding:4px 10px;text-align:left}
+.thinking{color:var(--muted);font-style:italic}
+.err{color:var(--bad);font-weight:600}
+.queries{display:grid;gap:10px}
+.qcard{border:1px solid var(--line);border-radius:10px;overflow:hidden;min-width:0}
+.qcard pre{margin:0;background:var(--code-bg);color:var(--code-fg);font:500 .85rem/1.5 var(--f-mono);padding:10px 12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.qcard .lab{font-family:var(--f-mono);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--code-accent)}
+.qcard .res{padding:10px 12px;display:grid;gap:10px;background:var(--paper);min-width:0}
+.tbl{overflow-x:auto}
+.tbl table{border-collapse:collapse;font-size:.88rem;font-variant-numeric:tabular-nums;width:100%}
+.tbl th{font-family:var(--f-mono);font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:500;text-align:left;padding:4px 8px;border-bottom:1px solid var(--line)}
+.tbl td{padding:4px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td.n{text-align:right}
+.note{font-size:.82rem;color:var(--muted)}
+.bars{display:grid;gap:4px}
+.bar{display:grid;grid-template-columns:minmax(90px,34%) 1fr;gap:10px;align-items:center;font-size:.85rem}
+.bar .l{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.bar .t{position:relative;height:20px;background:var(--tint);border-radius:4px}
+.bar .f{position:absolute;inset:0 auto 0 0;background:var(--bar);border-radius:4px}
+.bar .v{position:absolute;left:6px;top:0;line-height:20px;font:600 .78rem var(--f-mono);color:var(--on-accent)}
+.bar .v.out{color:var(--ink)}
+details.manual{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:12px 16px}
+details.manual summary{cursor:pointer;font-family:var(--f-display);font-weight:700;color:var(--head)}
+details.manual[open] summary{margin-bottom:10px}
+.manual textarea{width:100%;font:.9rem var(--f-mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:5em}
+.cols{font:.8rem var(--f-mono);color:var(--muted);overflow-wrap:anywhere}
+.banner{background:var(--accent-soft);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:.95rem}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>Ask the Data</h1>
+      <p class="sub">One year of anonymized Hometown Hero appointments (31,088 tech visits, Oct 2025 to Sep 2026). Ask in plain English. Claude writes the queries, runs them on the data in this page, and shows its work.</p>
+    </div>
+    <p class="status" id="status" role="status">Loading data…</p>
+  </div>
+
+  
+
+  <section class="ask" aria-label="Ask a question">
+    <form id="askform">
+      <label for="question" class="visually-hidden" hidden>Question</label>
+      <textarea id="question" rows="2" placeholder="e.g. Which weekday has the most no-shows, and is that just because of who books on that day?"></textarea>
+      <div class="btns">
+        <button type="submit" id="askbtn" disabled>Ask</button>
+        <button type="button" class="ghost" id="stopbtn" hidden>Stop</button>
+      </div>
+    </form>
+    <div class="chips" id="chips"></div>
+    <div class="opts">
+      <label for="tier">Speed
+        <select id="tier"><option value="quick">Fast (a few seconds)</option><option value="default">Thorough (slower, more careful)</option></select>
+      </label>
+      <button type="button" class="ghost" id="newchat" style="padding:4px 12px;font-size:.85rem">New conversation</button>
+      <span id="memo"></span>
+    </div>
+  </section>
+
+  <div class="thread" id="thread" aria-live="polite"></div>
+
+  <details class="manual" id="manual">
+    <summary>Run your own query</summary>
+    <div style="display:grid;gap:10px">
+      <p class="cols" id="cols"></p>
+      <textarea id="sql">SELECT weekday, COUNT(*) AS visits, SUM(no_show) AS no_shows, ROUND(100.0*SUM(no_show)/COUNT(*),1) AS no_show_pct
+FROM visits GROUP BY weekday ORDER BY no_show_pct DESC</textarea>
+      <div class="btns"><button type="button" id="runsql">Run</button></div>
+      <div id="manualout"></div>
+    </div>
+  </details>
+  <p class="note" style="text-align:center">MSA 2026 · AI That Actually Works · Jack Miller, SCS Communications &amp; Todd Daganaar, Hometown Hero. Answers come from Claude; check the queries before you trust a number.</p>
+</div>
+
+<script>
+(function(){
+  const $ = (id) => document.getElementById(id);
+  const status = $("status");
+  const NUM = new Set(["days_from_booking_to_appointment","visit_number_on_job","no_show","return_trip","days_out"]);
+  let ready = false, ctl = null, busy = false;
+  let history = []; // {role, content}
+  let SCHEMA = "";
+
+  // ---------- data ----------
+  async function loadData(){
+    const res = await fetch("visits.csv");
+    if(!res.ok) throw new Error("Could not load the data file.");
+    const txt = await res.text();
+    const lines = txt.trim().split(/\r?\n/);
+    const head = lines.shift().split(",");
+    const rows = new Array(lines.length);
+    for(let i=0;i<lines.length;i++){
+      const v = lines[i].split(","); const o = {};
+      for(let j=0;j<head.length;j++){
+        const k = head[j], x = v[j] ?? "";
+        o[k] = NUM.has(k) ? (x === "" ? null : Number(x)) : x;
+      }
+      o.no_show = o.outcome === "No-show" ? 1 : 0;
+      o.return_trip = o.outcome.indexOf("return trip") >= 0 ? 1 : 0;
+      o.days_out = o.days_from_booking_to_appointment;
+      o.month = o.appointment_date.slice(0,7);
+      rows[i] = o;
+    }
+    alasql("CREATE TABLE visits");
+    alasql.tables.visits.data = rows;
+    // schema + category values for the prompt
+    const cats = ["market","weekday","window_type","appointment_type","confirmed_by_customer","payer_type","appliance","high_end_brand","outcome"];
+    const desc = {
+      visit_id:"one row per scheduled tech visit", job_id:"random job code; return trips share a job", customer_id:"random customer code (repeat customers)",
+      market:"", tech:"random code 'Tech 01'..'Tech 30'", job_created_date:"YYYY-MM-DD the job was booked", appointment_date:"YYYY-MM-DD of this visit",
+      month:"YYYY-MM of appointment_date", weekday:"", days_out:"appointment_date minus job_created_date in days (number, may be null). Meaningful for first visits only",
+      days_from_booking_to_appointment:"same as days_out", visit_number_on_job:"1 = first visit, 2 = first return trip...",
+      window_type:"arrival window given", window_start:"HH:MM or blank", window_end:"HH:MM or blank", appointment_type:"Tentative / Definite / Unknown",
+      confirmed_by_customer:"Yes/No: customer confirmed before the visit (usually day before)", payer_type:"", appliance:"", brand:"cleaned brand name",
+      high_end_brand:"Yes/No", outcome:"", no_show:"1 if outcome = No-show else 0", return_trip:"1 if the tech visited but a return trip was needed else 0"
+    };
+    const parts = [];
+    for(const k of Object.keys(rows[0])){
+      let line = `- ${k}: ${desc[k] || ""}`.replace(/: $/,"");
+      if(cats.includes(k)){
+        const vals = [...new Set(rows.map(r=>r[k]))].sort();
+        line += ` Values: ${vals.map(v=>JSON.stringify(v)).join(", ")}`;
+      }
+      parts.push(line);
+    }
+    SCHEMA = parts.join("\n");
+    $("cols").textContent = "Table: visits · Columns: " + Object.keys(rows[0]).join(", ");
+    return rows.length;
+  }
+
+  function runSQL(sql){
+    let s = String(sql || "").trim().replace(/;+\s*$/,"");
+    const bare = s.replace(/--[^\n]*/g,"").replace(/\/\*[\s\S]*?\*\//g,"").trim();
+    if(!/^select\b/i.test(bare)) throw new Error("Only a single SELECT query is allowed.");
+    if(/;/.test(bare)) throw new Error("Only one statement at a time.");
+    if(/\binto\b/i.test(bare)) throw new Error("SELECT ... INTO is not allowed.");
+    const t0 = performance.now();
+    const out = alasql(s);
+    const ms = Math.round(performance.now() - t0);
+    if(!Array.isArray(out)) throw new Error("Query did not return rows.");
+    return { rows: out, ms };
+  }
+
+  // ---------- rendering ----------
+  function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+  function fmt(v){
+    if(v === null || v === undefined) return "";
+    if(typeof v === "number"){ return Number.isInteger(v) ? v.toLocaleString() : (Math.round(v*100)/100).toLocaleString(); }
+    return String(v);
+  }
+  function tableEl(rows, max){
+    const wrap = document.createElement("div"); wrap.className = "tbl";
+    if(!rows.length){ wrap.innerHTML = '<p class="note">No rows.</p>'; return wrap; }
+    const cols = Object.keys(rows[0]);
+    let h = "<table><thead><tr>" + cols.map(c=>`<th>${esc(c)}</th>`).join("") + "</tr></thead><tbody>";
+    for(const r of rows.slice(0,max)){
+      h += "<tr>" + cols.map(c => `<td class="${typeof r[c]==="number"?"n":""}">${esc(fmt(r[c]))}</td>`).join("") + "</tr>";
+    }
+    h += "</tbody></table>";
+    if(rows.length > max) h += `<p class="note">Showing ${max} of ${rows.length.toLocaleString()} rows.</p>`;
+    wrap.innerHTML = h; return wrap;
+  }
+  function barsEl(rows){
+    if(rows.length < 2 || rows.length > 25) return null;
+    const cols = Object.keys(rows[0]);
+    const numCols = cols.filter(c => rows.every(r => typeof r[c] === "number" || r[c] === null));
+    const labCols = cols.filter(c => !numCols.includes(c));
+    if(!numCols.length || !labCols.length) return null;
+    const pref = numCols.find(c => /pct|rate|percent|share/i.test(c)) || numCols[numCols.length-1];
+    const max = Math.max(...rows.map(r => Math.abs(r[pref] || 0))); if(!(max > 0)) return null;
+    const el = document.createElement("div"); el.className = "bars";
+    el.innerHTML = `<p class="note">${esc(pref)}</p>` + rows.map(r => {
+      const w = Math.max(0, (r[pref]||0)/max*100);
+      const lab = labCols.map(c => r[c]).join(" · ");
+      return `<div class="bar"><span class="l" title="${esc(lab)}">${esc(lab)}</span><span class="t"><span class="f" style="width:${w.toFixed(1)}%"></span><span class="v${w<18?" out":""}" style="${w<18?`left:calc(${w.toFixed(1)}% + 6px)`:""}">${esc(fmt(r[pref]))}</span></span></div>`;
+    }).join("");
+    return el;
+  }
+  function queryCard(sql, label){
+    const c = document.createElement("div"); c.className = "qcard";
+    c.innerHTML = `<pre><span class="lab">${esc(label)}</span>\n${esc(sql)}</pre><div class="res"><p class="note">Running…</p></div>`;
+    return c;
+  }
+  function fillCard(card, result, err){
+    const res = card.querySelector(".res"); res.innerHTML = "";
+    if(err){ res.innerHTML = `<p class="err">${esc(err)}</p>`; return; }
+    const b = barsEl(result.rows); if(b) res.appendChild(b);
+    res.appendChild(tableEl(result.rows, 25));
+    const n = document.createElement("p"); n.className = "note"; n.textContent = `${result.rows.length.toLocaleString()} row${result.rows.length===1?"":"s"} · ${result.ms} ms`; res.appendChild(n);
+  }
+  // small markdown: paragraphs, bullets, numbered, bold, inline code, tables
+  function md(src){
+    const lines = esc(src).split("\n"); let html = "", i = 0;
+    const inline = s => s.replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>").replace(/`([^`]+)`/g,"<code>$1</code>");
+    while(i < lines.length){
+      const l = lines[i];
+      if(/^\s*\|/.test(l)){
+        const rows = []; while(i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++]);
+        const cells = r => r.trim().replace(/^\||\|$/g,"").split("|").map(x=>inline(x.trim()));
+        const body = rows.filter(r => !/^\s*\|?\s*:?-{2,}/.test(r));
+        html += "<table>" + body.map((r,k) => "<tr>" + cells(r).map(c => k===0?`<th>${c}</th>`:`<td>${c}</td>`).join("") + "</tr>").join("") + "</table>";
+        continue;
+      }
+      if(/^\s*[-*•]\s+/.test(l)){ html += "<ul>"; while(i<lines.length && /^\s*[-*•]\s+/.test(lines[i])) html += "<li>"+inline(lines[i++].replace(/^\s*[-*•]\s+/,""))+"</li>"; html += "</ul>"; continue; }
+      if(/^\s*\d+[.)]\s+/.test(l)){ html += "<ol>"; while(i<lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) html += "<li>"+inline(lines[i++].replace(/^\s*\d+[.)]\s+/,""))+"</li>"; html += "</ol>"; continue; }
+      if(/^#{1,4}\s+/.test(l)){ html += "<p><strong>"+inline(l.replace(/^#{1,4}\s+/,""))+"</strong></p>"; i++; continue; }
+      if(l.trim()===""){ i++; continue; }
+      let para = [l]; i++;
+      while(i<lines.length && lines[i].trim()!=="" && !/^\s*([-*•]|\d+[.)]|\||#)/.test(lines[i])) para.push(lines[i++]);
+      html += "<p>"+inline(para.join(" "))+"</p>";
+    }
+    return html;
+  }
+
+  // ---------- Claude (through the class backend) ----------
+  const API = "https://lpgeoibdglpmkfqpevxk.supabase.co/functions/v1/ask-the-data";
+  async function callAPI(messages, tier, signal){
+    let r;
+    try{ r = await fetch(API, { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify({ tier, messages }), signal }); }
+    catch(e){ if(signal.aborted) throw { code:"cancelled" }; throw { code:"network", message:"Couldn't reach the demo server. Check the Wi-Fi and try again." }; }
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw { code: "http_" + r.status, message: d.error || ("Server error " + r.status) };
+    return d;
+  }
+
+  async function ask(question){
+    if(busy || !question.trim() || !ready) return;
+    busy = true; $("askbtn").disabled = true; $("stopbtn").hidden = false;
+    const turn = document.createElement("article"); turn.className = "turn";
+    turn.innerHTML = `<p class="q">${esc(question)}</p><div class="a"><div class="text"><p class="thinking">Thinking…</p></div><div class="queries"></div><p class="note model"></p></div>`;
+    $("thread").prepend(turn);
+    const textEl = turn.querySelector(".text"), qEl = turn.querySelector(".queries"), modelEl = turn.querySelector(".model");
+    let qn = 0; const texts = [];
+    const convo = [...history.slice(-6), { role:"user", content: question }];
+    ctl = new AbortController();
+    const tier = $("tier").value === "default" ? "thorough" : "fast";
+    try{
+      let done = false;
+      for(let round = 0; round < 6 && !done; round++){
+        const d = await callAPI(convo, tier, ctl.signal);
+        const content = Array.isArray(d.content) ? d.content : [];
+        convo.push({ role:"assistant", content });
+        const t = content.filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+        if(t){ texts.push(t); textEl.innerHTML = md(texts.join("\n\n")); }
+        if(d.model) modelEl.textContent = "Answered by " + d.model;
+        if(d.stop_reason !== "tool_use"){ done = true; break; }
+        const results = [];
+        for(const b of content.filter(b => b.type === "tool_use")){
+          const input = b.input || {};
+          const sql = String(input.sql || "");
+          const card = queryCard(sql, `Query ${++qn}${input.purpose ? " · " + String(input.purpose).slice(0,60) : ""}`);
+          qEl.appendChild(card);
+          try{
+            const r = runSQL(sql); fillCard(card, r);
+            results.push({ type:"tool_result", tool_use_id: b.id, content: JSON.stringify({ rowCount: r.rows.length, rows: r.rows.slice(0,60) }) });
+          }catch(e){
+            const msg = e.message || String(e); fillCard(card, null, msg);
+            results.push({ type:"tool_result", tool_use_id: b.id, content: "Error: " + msg, is_error: true });
+          }
+        }
+        convo.push({ role:"user", content: results });
+        if(!texts.length) textEl.innerHTML = '<p class="thinking">Running queries…</p>';
+      }
+      if(!done) textEl.insertAdjacentHTML("beforeend", '<p class="note">Stopped after six rounds of queries. Try a narrower question.</p>');
+      const answer = texts.join("\n\n").trim() || "(No written answer.)";
+      if(!texts.length) textEl.innerHTML = md(answer);
+      history.push({ role:"user", content: question }, { role:"assistant", content: answer.slice(0, 3900) });
+      if(history.length > 6) history = history.slice(-6);
+      $("memo").textContent = `Follow-ups remember ${history.length/2} earlier question${history.length>2?"s":""}.`;
+    }catch(e){
+      const code = e && e.code;
+      if(code === "cancelled"){ textEl.insertAdjacentHTML("beforeend", '<p class="note">Stopped.</p>'); }
+      else{
+        if(!texts.length) textEl.innerHTML = "";
+        textEl.insertAdjacentHTML("beforeend", `<p class="err">${esc((e && e.message) || "Something went wrong. Ask again.")}</p>`);
+      }
+    }finally{
+      busy = false; $("askbtn").disabled = !ready; $("stopbtn").hidden = true; ctl = null;
+    }
+  }
+
+  // ---------- wiring ----------
+  const CHIPS = [
+    "Which weekday has the highest no-show rate?",
+    "Does confirming matter more for jobs booked far out?",
+    "Which market has the most no-shows, and is that just payer mix?",
+    "Which appliances need a return trip most often?",
+    "Do high-end brands no-show less?",
+    "How busy was each month?"
+  ];
+  for(const c of CHIPS){
+    const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.textContent = c;
+    b.addEventListener("click", () => { $("question").value = c; if(!$("askbtn").disabled) ask(c); });
+    $("chips").appendChild(b);
+  }
+  $("askform").addEventListener("submit", e => { e.preventDefault(); const q = $("question").value; ask(q); });
+  $("question").addEventListener("keydown", e => { if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); $("askform").requestSubmit(); } });
+  $("stopbtn").addEventListener("click", () => { if(ctl) ctl.abort(); });
+  $("newchat").addEventListener("click", () => { history = []; $("thread").innerHTML = ""; $("memo").textContent = ""; });
+  $("runsql").addEventListener("click", () => {
+    const out = $("manualout"); out.innerHTML = "";
+    const card = queryCard($("sql").value, "Your query"); out.appendChild(card);
+    try{ fillCard(card, runSQL($("sql").value)); }catch(e){ fillCard(card, null, e.message || String(e)); }
+  });
+
+  loadData().then(n => {
+    ready = true;
+    status.innerHTML = `<b>${n.toLocaleString()}</b> visits loaded`;
+    $("askbtn").disabled = false;
+    $("runsql").disabled = false;
+  }).catch(e => { status.textContent = e.message; });
+
+})();
+</script>
+
+</body>
+</html>
