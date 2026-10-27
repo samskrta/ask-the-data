@@ -196,7 +196,7 @@ FROM visits GROUP BY weekday ORDER BY no_show_pct DESC</textarea>
   }
 
   function runSQL(sql){
-    let s = String(sql || "").trim().replace(/;+\s*$/,"");
+    let s = String(sql || "").replace(/"\s*\n?\s*purpose>[\s\S]*$/i,"").trim().replace(/;+\s*$/,"");
     const bare = s.replace(/--[^\n]*/g,"").replace(/\/\*[\s\S]*?\*\//g,"").trim();
     if(!/^select\b/i.test(bare)) throw new Error("Only a single SELECT query is allowed.");
     if(/;/.test(bare)) throw new Error("Only one statement at a time.");
